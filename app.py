@@ -1,82 +1,108 @@
+import streamlit as st
 import os
-import glob
 import time
+import glob
 import cv2
 import requests
 import numpy as np
 import pytesseract
-import streamlit as st
 from PIL import Image
 from gtts import gTTS
 
-# Configuración de la página
+# Configuración de página
 st.set_page_config(
-    page_title="OCR & Traductor Studio",
-    page_icon="🔍",
+    page_title="OCR & Traductor de Voz",
+    page_icon="🌐",
     layout="wide"
 )
 
-# Estilos CSS
+# --- ESTILOS DE COLOR PERSONALIZADOS (CSS) ---
 st.markdown("""
     <style>
-    .stApp { background-color: #0F172A; color: #F8FAFC; }
-    section[data-testid="stSidebar"] { background-color: #1E293B; border-right: 1px solid #334155; }
-    
-    .main-title {
-        background: linear-gradient(135deg, #FFFFFF 0%, #A855F7 100%);
+    /* Fondo principal de la aplicación */
+    .stApp {
+        background-color: #0F172A;
+        color: #F8FAFC;
+    }
+
+    /* Barra lateral */
+    section[data-testid="stSidebar"] {
+        background-color: #1E293B;
+        border-right: 1px solid #334155;
+    }
+
+    /* Títulos y Subtítulos */
+    h1 {
+        background: linear-gradient(135deg, #A855F7 0%, #38BDF8 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
-        font-size: 2.5rem;
-        font-weight: 800;
-        text-align: center;
-        margin-bottom: 0.2rem;
+        font-weight: 800 !important;
     }
-    .sub-title { text-align: center; color: #CBD5E1; font-size: 1.1rem; margin-bottom: 1.5rem; }
-
-    .custom-box-ocr {
-        background-color: #1E293B; border-left: 5px solid #38BDF8;
-        border-radius: 10px; padding: 1rem; color: #E2E8F0; font-size: 1.1rem; margin-bottom: 1rem;
-    }
-    .custom-box-trans {
-        background-color: #1E293B; border-left: 5px solid #E879F9;
-        border-radius: 10px; padding: 1rem; color: #F472B6; font-size: 1.2rem; font-weight: 600; margin-bottom: 1rem;
+    
+    h2, h3, h4, label, .stMarkdown {
+        color: #F1F5F9 !important;
     }
 
+    /* Contenedores con borde */
+    div[data-testid="stForm"], div[data-testid="stBlock"] > div[data-testid="stVerticalBlock"] > div[data-baseweb="card"] {
+        background-color: #1E293B;
+        border: 1px solid #334155 !important;
+        border-radius: 12px;
+    }
+
+    /* Modificación de contenedores con borde activado (border=True) */
+    div[data-testid="stVerticalBlockBorderWrapper"] {
+        background-color: #1E293B !important;
+        border: 1px solid #334155 !important;
+        border-radius: 12px !important;
+    }
+
+    /* Pestañas (Tabs) */
+    button[data-baseweb="tab"] {
+        background-color: transparent;
+        color: #94A3B8 !important;
+        border-radius: 8px 8px 0 0;
+    }
+    button[aria-selected="true"] {
+        background-color: #334155 !important;
+        color: #38BDF8 !important;
+        border-bottom: 3px solid #38BDF8 !important;
+    }
+
+    /* Botón Principal */
     div.stButton > button {
-        background: linear-gradient(135deg, #A855F7 0%, #D946EF 100%);
-        color: #FFFFFF !important; border: none; border-radius: 12px;
-        padding: 0.6rem 2rem; font-weight: 700; font-size: 1rem; transition: all 0.3s ease;
-        box-shadow: 0 4px 15px rgba(168, 85, 247, 0.4);
+        background: linear-gradient(135deg, #8B5CF6 0%, #D946EF 100%) !important;
+        color: #FFFFFF !important;
+        border: none !important;
+        border-radius: 10px !important;
+        padding: 0.6rem 1.5rem !important;
+        font-weight: 700 !important;
+        box-shadow: 0 4px 14px rgba(139, 92, 246, 0.4);
+        transition: all 0.3s ease;
     }
-    div.stButton > button:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(217, 70, 239, 0.6); }
+    div.stButton > button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(217, 70, 239, 0.6);
+    }
+
+    /* Cajas de Alerta e Info */
+    div[data-testid="stNotification"] {
+        background-color: #1E293B !important;
+        border: 1px solid #38BDF8 !important;
+        color: #F8FAFC !important;
+    }
+
+    /* Áreas de Texto e Inputs */
+    textarea, input, select {
+        background-color: #0F172A !important;
+        color: #F8FAFC !important;
+        border: 1px solid #334155 !important;
+        border-radius: 8px !important;
+    }
     </style>
 """, unsafe_allow_html=True)
 
-st.markdown("<h1 class='main-title'>🔍 Scanner OCR & Traductor</h1>", unsafe_allow_html=True)
-st.markdown("<p class='sub-title'>Extrae texto desde una imagen o cámara y conviértelo a audio traducido</p>", unsafe_allow_html=True)
-
-# Idiomas compatibles con gTTS y Google Translate
-LANGUAGES = {
-    "Ingles": "en",
-    "Español": "es",
-    "Bengali": "bn",
-    "koreano": "ko",
-    "Mandarin": "zh-CN",
-    "Japones": "ja"
-}
-
-ACCENTS = {
-    "Default": "com",
-    "India": "co.in",
-    "United Kingdom": "co.uk",
-    "United States": "com",
-    "Canada": "ca",
-    "Australia": "com.au",
-    "Ireland": "ie",
-    "South Africa": "co.za"
-}
-
-# Función directa de traducción mediante HTTP sin depender de librerías inestables
+# Función nativa de traducción directa HTTP (estable y sin bloqueos)
 def traducir_texto(text_to_translate, source_lang, target_lang):
     url = "https://translate.googleapis.com/translate_a/single"
     params = {
@@ -92,105 +118,154 @@ def traducir_texto(text_to_translate, source_lang, target_lang):
         translated_text = "".join([item[0] for item in result[0] if item[0]])
         return translated_text
     else:
-        raise Exception("Error en el servicio de traducción HTTP")
+        raise Exception("Error en la conexión con el servidor de traducción")
 
-# Limpieza de temporales
-def remove_files(n_days):
-    mp3_files = glob.glob("temp/*mp3")
-    if len(mp3_files) != 0:
-        now = time.time()
-        for f in mp3_files:
-            if os.stat(f).st_mtime < now - (n_days * 86400):
-                try: os.remove(f)
-                except OSError: pass
+# Crear directorio temporal si no existe
+if not os.path.exists("temp"):
+    os.makedirs("temp")
+
+# Función de limpieza de archivos antiguos
+def remove_files(n_days_old=7):
+    mp3_files = glob.glob("temp/*.mp3")
+    now = time.time()
+    n_seconds = n_days_old * 86400
+    for f in mp3_files:
+        if os.stat(f).st_mtime < now - n_seconds:
+            try:
+                os.remove(f)
+            except Exception:
+                pass
 
 remove_files(7)
 
-# Barra lateral
+def text_to_speech(input_language, output_language, text, tld):
+    trans_text = traducir_texto(text, input_language, output_language)
+    
+    # Ajuste de código para idioma Chino en gTTS
+    gtts_lang = "zh-cn" if output_language.lower() == "zh-cn" else output_language
+    
+    tts = gTTS(trans_text, lang=gtts_lang, tld=tld, slow=False)
+    
+    # Formatear nombre de archivo válido
+    file_prefix = "".join(x for x in text[:15] if x.isalnum()).strip()
+    my_file_name = file_prefix if file_prefix else "audio_result"
+    
+    file_path = f"temp/{my_file_name}.mp3"
+    tts.save(file_path)
+    return file_path, trans_text
+
+# Mapeo de idiomas
+LANGUAGES = {
+    "Español": "es",
+    "Inglés": "en",
+    "Bengalí": "bn",
+    "Coreano": "ko",
+    "Mandarín": "zh-cn",
+    "Japonés": "ja"
+}
+
+ACCENTS = {
+    "Predeterminado": "com",
+    "Estados Unidos": "com",
+    "Reino Unido": "co.uk",
+    "Canadá": "ca",
+    "Australia": "com.au",
+    "India": "co.in",
+    "Irlanda": "ie",
+    "Sudáfrica": "co.za"
+}
+
+# --- INTERFAZ PRINCIPAL ---
+st.title("🌐 Reconocimiento Óptico y Traductor de Voz")
+st.caption("Extrae texto de imágenes (cámara o archivo) y conviértelo a audio traducido.")
+st.divider()
+
+# Variables de estado
+extracted_text = ""
+img_rgb = None
+
+# --- BARRA LATERAL ---
 with st.sidebar:
-    st.markdown("### ⚙️ Procesamiento de Cámara")
-    filtro = st.radio("Filtro para imagen:", ('No', 'Sí (Invertir)'))
-    st.divider()
-    st.markdown("### 🌐 Parámetros de Traducción")
-    in_lang = st.selectbox("Seleccione el lenguaje de entrada", list(LANGUAGES.keys()))
-    out_lang = st.selectbox("Seleccione el lenguaje de salida", list(LANGUAGES.keys()), index=0)
-    english_accent = st.selectbox("Seleccione el acento", list(ACCENTS.keys()))
+    st.header("⚙️ Configuración")
+    
+    st.subheader("1. Procesamiento de Imagen")
+    aplicar_filtro = st.toggle("Aplicar filtro de inversión", value=False)
+    
+    st.subheader("2. Idiomas y Voz")
+    in_lang_name = st.selectbox("Idioma de origen (Imagen)", list(LANGUAGES.keys()), index=0)
+    out_lang_name = st.selectbox("Idioma de destino (Audio)", list(LANGUAGES.keys()), index=1)
+    
+    accent_name = st.selectbox("Acento de voz (Para Inglés)", list(ACCENTS.keys()))
+    
     display_output_text = st.checkbox("Mostrar texto traducido", value=True)
 
-# Entrada de Imagen
-st.markdown("### 📷 Fuente de la imagen")
-cam_ = st.checkbox("Usar Cámara")
+# --- CUERPO PRINCIPAL ---
+tab1, tab2 = st.tabs(["📷 Usar Cámara", "📁 Subir Imagen"])
 
-img_rgb = None
-text = ""
+with tab1:
+    img_file_buffer = st.camera_input("Toma una fotografía:")
+    if img_file_buffer is not None:
+        bytes_data = img_file_buffer.getvalue()
+        cv2_img = cv2.imdecode(np.frombuffer(bytes_data, np.uint8), cv2.IMREAD_COLOR)
+        if aplicar_filtro:
+            cv2_img = cv2.bitwise_not(cv2_img)
+        img_rgb = cv2.cvtColor(cv2_img, cv2.COLOR_BGR2RGB)
 
-col_input, col_preview = st.columns(2)
+with tab2:
+    bg_image = st.file_uploader("Selecciona un archivo (PNG o JPG):", type=["png", "jpg", "jpeg"])
+    if bg_image is not None:
+        bytes_data = bg_image.getvalue()
+        cv2_img = cv2.imdecode(np.frombuffer(bytes_data, np.uint8), cv2.IMREAD_COLOR)
+        if aplicar_filtro:
+            cv2_img = cv2.bitwise_not(cv2_img)
+        img_rgb = cv2.cvtColor(cv2_img, cv2.COLOR_BGR2RGB)
 
-with col_input:
-    if cam_:
-        img_file_buffer = st.camera_input("Toma una Foto")
-        if img_file_buffer is not None:
-            bytes_data = img_file_buffer.getvalue()
-            cv2_img = cv2.imdecode(np.frombuffer(bytes_data, np.uint8), cv2.IMREAD_COLOR)
-            if filtro == 'Sí (Invertir)':
-                cv2_img = cv2.bitwise_not(cv2_img)
-            img_rgb = cv2.cvtColor(cv2_img, cv2.COLOR_BGR2RGB)
-    else:
-        bg_image = st.file_uploader("Cargar Imagen:", type=["png", "jpg", "jpeg"])
-        if bg_image is not None:
-            uploaded_file = bg_image
-            os.makedirs("temp", exist_ok=True)
-            file_path = os.path.join("temp", uploaded_file.name)
-            with open(file_path, 'wb') as f:
-                f.write(uploaded_file.read())
-            img_cv = cv2.imread(file_path)
-            img_rgb = cv2.cvtColor(img_cv, cv2.COLOR_BGR2RGB)
+# --- EXTRACTION & RESULTADOS ---
+if img_rgb is not None:
+    col_img, col_txt = st.columns(2)
+    
+    with col_img:
+        with st.container(border=True):
+            st.subheader("🖼️ Imagen cargada")
+            st.image(img_rgb, use_container_width=True)
+            
+    with col_txt:
+        with st.container(border=True):
+            st.subheader("📝 Texto Detectado")
+            with st.spinner("Procesando imagen con OCR..."):
+                extracted_text = pytesseract.image_to_string(img_rgb)
+            
+            if extracted_text.strip():
+                st.text_area("Texto extraído:", value=extracted_text, height=180)
+            else:
+                st.warning("No se logró detectar texto en la imagen.")
 
-with col_preview:
-    if img_rgb is not None:
-        st.markdown("### 🖼️ Vista Previa")
-        st.image(img_rgb, use_container_width=True)
-        text = pytesseract.image_to_string(img_rgb)
-
-# Procesamiento al presionar el botón
-if text.strip():
-    st.divider()
-    st.markdown("### 📝 Texto Detectado por OCR")
-    st.markdown(f'<div class="custom-box-ocr">{text}</div>', unsafe_allow_html=True)
-
-    btn_col1, btn_col2, btn_col3 = st.columns([1, 1, 1])
-    with btn_col2:
-        convert_btn = st.button("✨ Traducir y Generar Audio", use_container_width=True)
-
-    if convert_btn:
-        try:
-            os.makedirs("temp", exist_ok=True)
-            input_language = LANGUAGES[in_lang]
-            output_language = LANGUAGES[out_lang]
-            tld = ACCENTS[english_accent]
-
-            clean_text = text.strip()
-
-            # 1. Obtener texto traducido
-            translated_text = traducir_texto(clean_text, input_language, output_language)
-
-            # 2. Mapeo del código de idioma para gTTS (gTTS usa 'zh-cn' para chino)
-            gtts_lang = "zh-cn" if output_language.lower() == "zh-cn" else output_language
-
-            # 3. Generar audio en el idioma de SALIDA seleccionado
-            tts = gTTS(text=translated_text, lang=gtts_lang, tld=tld, slow=False)
-            audio_path = "temp/traduccion_audio.mp3"
-            tts.save(audio_path)
-
-            # 4. Renderizar texto de la traducción en pantalla
-            if display_output_text:
-                st.markdown(f"### 📄 Texto traducido ({out_lang}):")
-                st.markdown(f'<div class="custom-box-trans">{translated_text}</div>', unsafe_allow_html=True)
-
-            # 5. Renderizar audio en pantalla
-            st.markdown(f"### 🔊 Audio traducido ({out_lang}):")
-            with open(audio_path, "rb") as audio_file:
-                st.audio(audio_file.read(), format="audio/mp3")
-
-        except Exception as e:
-            st.error(f"Error durante el proceso: {e}")
+    # --- SECCIÓN DE TRADUCCIÓN Y AUDIO ---
+    if extracted_text.strip():
+        st.divider()
+        st.subheader("🔊 Traducción y Lectura en Audio")
+        
+        if st.button("Convertir y Generar Audio", type="primary"):
+            input_language = LANGUAGES[in_lang_name]
+            output_language = LANGUAGES[out_lang_name]
+            tld = ACCENTS[accent_name]
+            
+            with st.spinner("Traduciendo y generando archivo de audio..."):
+                try:
+                    file_path, output_text = text_to_speech(
+                        input_language, output_language, extracted_text, tld
+                    )
+                    
+                    st.success("¡Audio generado con éxito!")
+                    
+                    if display_output_text:
+                        st.markdown("*Texto traducido:*")
+                        st.info(output_text)
+                        
+                    st.markdown("*Escuchar:*")
+                    with open(file_path, "rb") as f:
+                        audio_bytes = f.read()
+                    st.audio(audio_bytes, format="audio/mp3")
+                    
+                except Exception as e:
+                    st.error(f"Ocurrió un error al procesar el audio: {e}")
