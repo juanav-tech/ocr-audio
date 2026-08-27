@@ -3,11 +3,11 @@ import os
 import time
 import glob
 import cv2
-import requests
 import numpy as np
 import pytesseract
 from PIL import Image
 from gtts import gTTS
+from googletrans import Translator
 
 # Configuración de página
 st.set_page_config(
@@ -16,109 +16,8 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- ESTILOS DE COLOR PERSONALIZADOS (CSS) ---
-st.markdown("""
-    <style>
-    /* Fondo principal de la aplicación */
-    .stApp {
-        background-color: #0F172A;
-        color: #F8FAFC;
-    }
-
-    /* Barra lateral */
-    section[data-testid="stSidebar"] {
-        background-color: #1E293B;
-        border-right: 1px solid #334155;
-    }
-
-    /* Títulos y Subtítulos */
-    h1 {
-        background: linear-gradient(135deg, #A855F7 0%, #38BDF8 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        font-weight: 800 !important;
-    }
-    
-    h2, h3, h4, label, .stMarkdown {
-        color: #F1F5F9 !important;
-    }
-
-    /* Contenedores con borde */
-    div[data-testid="stForm"], div[data-testid="stBlock"] > div[data-testid="stVerticalBlock"] > div[data-baseweb="card"] {
-        background-color: #1E293B;
-        border: 1px solid #334155 !important;
-        border-radius: 12px;
-    }
-
-    /* Modificación de contenedores con borde activado (border=True) */
-    div[data-testid="stVerticalBlockBorderWrapper"] {
-        background-color: #1E293B !important;
-        border: 1px solid #334155 !important;
-        border-radius: 12px !important;
-    }
-
-    /* Pestañas (Tabs) */
-    button[data-baseweb="tab"] {
-        background-color: transparent;
-        color: #94A3B8 !important;
-        border-radius: 8px 8px 0 0;
-    }
-    button[aria-selected="true"] {
-        background-color: #334155 !important;
-        color: #38BDF8 !important;
-        border-bottom: 3px solid #38BDF8 !important;
-    }
-
-    /* Botón Principal */
-    div.stButton > button {
-        background: linear-gradient(135deg, #8B5CF6 0%, #D946EF 100%) !important;
-        color: #FFFFFF !important;
-        border: none !important;
-        border-radius: 10px !important;
-        padding: 0.6rem 1.5rem !important;
-        font-weight: 700 !important;
-        box-shadow: 0 4px 14px rgba(139, 92, 246, 0.4);
-        transition: all 0.3s ease;
-    }
-    div.stButton > button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 20px rgba(217, 70, 239, 0.6);
-    }
-
-    /* Cajas de Alerta e Info */
-    div[data-testid="stNotification"] {
-        background-color: #1E293B !important;
-        border: 1px solid #38BDF8 !important;
-        color: #F8FAFC !important;
-    }
-
-    /* Áreas de Texto e Inputs */
-    textarea, input, select {
-        background-color: #0F172A !important;
-        color: #F8FAFC !important;
-        border: 1px solid #334155 !important;
-        border-radius: 8px !important;
-    }
-    </style>
-""", unsafe_allow_html=True)
-
-# Función nativa de traducción directa HTTP (estable y sin bloqueos)
-def traducir_texto(text_to_translate, source_lang, target_lang):
-    url = "https://translate.googleapis.com/translate_a/single"
-    params = {
-        "client": "gtx",
-        "sl": source_lang,
-        "tl": target_lang,
-        "dt": "t",
-        "q": text_to_translate
-    }
-    response = requests.get(url, params=params)
-    if response.status_code == 200:
-        result = response.json()
-        translated_text = "".join([item[0] for item in result[0] if item[0]])
-        return translated_text
-    else:
-        raise Exception("Error en la conexión con el servidor de traducción")
+# Inicialización de servicios
+translator = Translator()
 
 # Crear directorio temporal si no existe
 if not os.path.exists("temp"):
@@ -139,12 +38,10 @@ def remove_files(n_days_old=7):
 remove_files(7)
 
 def text_to_speech(input_language, output_language, text, tld):
-    trans_text = traducir_texto(text, input_language, output_language)
+    translation = translator.translate(text, src=input_language, dest=output_language)
+    trans_text = translation.text
     
-    # Ajuste de código para idioma Chino en gTTS
-    gtts_lang = "zh-cn" if output_language.lower() == "zh-cn" else output_language
-    
-    tts = gTTS(trans_text, lang=gtts_lang, tld=tld, slow=False)
+    tts = gTTS(trans_text, lang=output_language, tld=tld, slow=False)
     
     # Formatear nombre de archivo válido
     file_prefix = "".join(x for x in text[:15] if x.isalnum()).strip()
