@@ -16,10 +16,10 @@ st.set_page_config(
     layout="wide"
 )
 
-# Estilos CSS personalizados (Colores, cajas de texto y botones)
+# Estilos CSS personalizados
 st.markdown("""
     <style>
-    /* Fondo general de la aplicación */
+    /* Fondo general */
     .stApp {
         background-color: #0F172A;
         color: #F8FAFC;
@@ -31,7 +31,7 @@ st.markdown("""
         border-right: 1px solid #334155;
     }
 
-    /* Título principal con gradiente */
+    /* Título principal */
     .main-title {
         background: linear-gradient(135deg, #FFFFFF 0%, #A855F7 100%);
         -webkit-background-clip: text;
@@ -71,7 +71,7 @@ st.markdown("""
         margin-bottom: 1rem;
     }
 
-    /* Botón principal */
+    /* Botón principal centrado */
     div.stButton > button {
         background: linear-gradient(135deg, #A855F7 0%, #D946EF 100%);
         color: #FFFFFF !important;
@@ -116,7 +116,7 @@ ACCENTS = {
     "South Africa": "co.za"
 }
 
-# Funciones del sistema
+# Función para limpiar archivos antiguos
 def remove_files(n_days):
     mp3_files = glob.glob("temp/*mp3")
     if len(mp3_files) != 0:
@@ -129,16 +129,6 @@ def remove_files(n_days):
                     pass
 
 remove_files(7)
-
-def text_to_speech(input_lang, output_lang, text_content, accent_tld):
-    translator = Translator()
-    translation = translator.translate(text_content, src=input_lang, dest=output_lang)
-    trans_text = translation.text
-    tts = gTTS(trans_text, lang=output_lang, tld=accent_tld, slow=False)
-    file_name = text_content[0:20].replace(" ", "_") if text_content else "audio"
-    file_path = f"temp/{file_name}.mp3"
-    tts.save(file_path)
-    return file_path, trans_text
 
 # Panel lateral de configuración
 with st.sidebar:
@@ -186,6 +176,7 @@ with col_preview:
     if img_rgb is not None:
         st.markdown("### 🖼️ Vista Previa")
         st.image(img_rgb, use_container_width=True)
+        # Extraer texto de la imagen
         text = pytesseract.image_to_string(img_rgb)
 
 # Sección de resultados y traducción
@@ -206,7 +197,21 @@ if text.strip():
             output_language = LANGUAGES[out_lang]
             tld = ACCENTS[english_accent]
 
-            audio_path, output_text = text_to_speech(input_language, output_language, text, tld)
+            # Instanciar el traductor directamente aquí
+            translator = Translator()
+            
+            # Limpiar saltos de línea extra para evitar errores en la API
+            clean_text = text.strip()
+            
+            # Ejecutar traducción
+            translation = translator.translate(clean_text, src=input_language, dest=output_language)
+            trans_text = translation.text
+
+            # Generar audio con gTTS
+            tts = gTTS(trans_text, lang=output_language, tld=tld, slow=False)
+            file_name = clean_text[0:15].replace(" ", "_").replace("\n", "") if clean_text else "audio"
+            audio_path = f"temp/{file_name}.mp3"
+            tts.save(audio_path)
 
             st.markdown("### 🔊 Audio de salida:")
             with open(audio_path, "rb") as audio_file:
@@ -214,7 +219,7 @@ if text.strip():
 
             if display_output_text:
                 st.markdown("### 📄 Texto traducido:")
-                st.markdown(f'<div class="custom-box-trans">{output_text}</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="custom-box-trans">{trans_text}</div>', unsafe_allow_html=True)
 
         except Exception as e:
             st.error(f"Error al procesar la traducción: {e}")
